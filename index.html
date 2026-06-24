@@ -88,21 +88,14 @@ function loadLB() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || [];
 function topN(n) { return loadLB().slice().sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n); }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
-// Placeholder entries shown ONLY when no one has played yet, so the attract
-// screen never looks dead. Replaced entirely by real rows once they exist.
-const DEMO = [
-  { username: "SKYLAR", bufferSeconds: 47 },
-  { username: "PIP",    bufferSeconds: 39 },
-  { username: "MILO",   bufferSeconds: 33 },
-  { username: "ROZ",    bufferSeconds: 28 },
-  { username: "JUNO",   bufferSeconds: 21 },
-  { username: "FINCH",  bufferSeconds: 15 },
-];
-
 function render() {
-  const real = topN(10);
-  const rows = real.length ? real : DEMO;
+  const rows = topN(10);
   const tb = document.getElementById("rows");
+  if (!rows.length) {
+    // no real scores yet — a friendly prompt, never fake rows
+    tb.innerHTML = `<tr><td class="empty" colspan="3">★ be the first ★<br>tap to play</td></tr>`;
+    return;
+  }
   tb.innerHTML = rows.map((r, i) => {
     const cls = i < 3 ? ` class="top${i + 1}"` : "";
     return `<tr${cls}><td class="rank">${i + 1}</td>`
@@ -115,6 +108,18 @@ render();
 // and poll as a backstop for same-tab writes that don't fire 'storage'.
 addEventListener("storage", e => { if (e.key === LB_KEY) render(); });
 setInterval(render, 3000);
+
+// hidden kiosk reset — Ctrl/Cmd+Shift+Backspace wipes the board (after a confirm),
+// so you can clear scores on the kiosk without opening DevTools.
+addEventListener("keydown", e => {
+  if (e.shiftKey && (e.ctrlKey || e.metaKey) && e.code === "Backspace") {
+    e.preventDefault();
+    if (confirm("Reset the leaderboard? This permanently clears all saved scores on this device.")) {
+      localStorage.removeItem(LB_KEY);
+      render();
+    }
+  }
+});
 
 // tapping anywhere (not just the button) starts a game — it's an attract screen
 addEventListener("click", e => { if (!e.target.closest("a")) location.href = "weather.html"; });
