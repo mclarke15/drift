@@ -151,7 +151,7 @@
   <label>growth / event <span class="row"><span>sec added each time</span><b id="bgeV"></b></span>
     <input id="bge" type="range" min="0" max="6" step="0.2" /></label>
 
-  <div class="hint">press <b>T</b> to toggle · arrows/WASD or space/click to fly</div>
+  <div class="hint">arrows/WASD or space/click to fly</div>
 </div>
 
 <div id="start" class="overlay">
@@ -234,7 +234,7 @@ const CONFIG = {
   // world / time
   secondsPerHour: 3,   // real seconds per weather-hour (lower = more action)
   arenaMargin:    46,  // px inset from canvas edge to the lethal wall
-  balloonR:       22,  // base balloon collision radius (px) — matches the larger sprite
+  balloonR:       28,  // base balloon collision radius (px) — matches the larger sprite
 
   // intentional buffering — the real point of the exhibit. Periodic forced
   // freezes dressed as a dying connection, not a game mechanic: plain
@@ -596,8 +596,10 @@ const Game = (() => {
       const br = CONFIG.balloonR * bal.scale;
       for (const h of hazards) {
         h.x += h.vx * dt;
-        // tighter vertical tolerance (×1.4) since the cloud is flatter than wide
-        if (!dead && Math.hypot(bal.x - h.x, (bal.y - h.y) * 1.4) < h.r * 0.8 + br * 0.5) {
+        // tighter vertical tolerance (×1.4) since the cloud is flatter than wide.
+        // br*0.7 matches the (now larger) balloon's visible canopy, so it dies on
+        // contact instead of overlapping the cloud first; h.r*0.9 ≈ the cloud body.
+        if (!dead && Math.hypot(bal.x - h.x, (bal.y - h.y) * 1.4) < h.r * 0.9 + br * 0.7) {
           deathReason = "flew into a storm cloud"; die();
         }
       }
@@ -620,9 +622,12 @@ const Game = (() => {
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 150 * dt; p.life -= dt; }
     particles = particles.filter(p => p.life > 0);
 
-    if (bal.x <= A.left || bal.x >= A.right) { deathReason = "drifted into the edge"; die(); }
-    else if (bal.y <= A.top) { deathReason = "flew too high"; die(); }
-    else if (bal.y >= A.bottom) { deathReason = "sank too low"; die(); }
+    // edge death is radius-aware so the (larger) balloon dies when its visible
+    // body touches an edge, not only when its center crosses
+    const edgeR = CONFIG.balloonR * bal.scale * 0.7;
+    if (bal.x - edgeR <= A.left || bal.x + edgeR >= A.right) { deathReason = "drifted into the edge"; die(); }
+    else if (bal.y - edgeR <= A.top) { deathReason = "flew too high"; die(); }
+    else if (bal.y + edgeR >= A.bottom) { deathReason = "sank too low"; die(); }
 
     if (onState) onState(state());
   }
@@ -696,7 +701,7 @@ const Game = (() => {
 
     for (const h of hazards) Pixel.draw(ctx, Pixel.stormcloud, h.x, h.y, (h.r * 2) / Pixel.stormcloud.w);
 
-    Pixel.draw(ctx, Pixel.balloon, bal.x, bal.y, 4.0 * bal.scale);
+    Pixel.draw(ctx, Pixel.balloon, bal.x, bal.y, 5.2 * bal.scale);
 
     if (bufferActive) renderBuffer();
   }
@@ -721,6 +726,10 @@ const Game = (() => {
   }
 
   /* ---- exit "break apart": everything shatters into pixels and falls -------- */
+  function finishDebris() {
+    if (!debris && !onDebrisDone) return;
+    const cb = onDebrisDone; debris = null; onDebrisDone = null; if (cb) cb();
+  }
   function startDebris(done) {
     onDebrisDone = done; debrisT = 0; debris = [];
     const burst = (x, y, n, colors, spread, baseSize) => {
@@ -734,6 +743,17 @@ const Game = (() => {
     for (const c of coins) burst(c.x, c.y, 6, ["#fff3a8", "#ffe87a"], 90, 3);                 // sparkles
     for (const h of hazards) burst(h.x, h.y, 8, ["#525b6e", "#3a4254", "#7b8498"], 80, 4);    // storm clouds
     for (const c of clouds) burst(c.x, c.y, 4, ["#eef6ff", "#cfe0f2"], 50, 4);                // decorative clouds
+    // rAF watchdog: the debris animation is driven by requestAnimationFrame, which
+    // a backgrounded/throttled tab clamps to ~0. Poll on a wall-clock timer (which
+    // keeps firing) and if the debris clock stops advancing, the loop has stalled —
+    // finish promptly so the recap appears instead of hanging on a frozen shatter.
+    let lastSeen = -1;
+    const watch = setInterval(() => {
+      if (!debris) { clearInterval(watch); return; }            // settled naturally
+      // debrisT not advancing → rAF is stalled (or never ran): show the recap now.
+      if (debrisT === 0 || debrisT === lastSeen) { clearInterval(watch); finishDebris(); return; }
+      lastSeen = debrisT;
+    }, 200);
   }
   function stepDebris(dt) {
     debrisT += dt;
@@ -748,7 +768,7 @@ const Game = (() => {
         else { p.vy *= -0.34; p.vx *= 0.55; allSettled = false; }
       } else allSettled = false;
     }
-    if (allSettled || debrisT > 2.8) { const cb = onDebrisDone; debris = null; onDebrisDone = null; if (cb) cb(); }
+    if (allSettled || debrisT > 2.8) finishDebris();
   }
   function renderDebris() {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -803,7 +823,14 @@ const Game = (() => {
   // Left/A, Right/D = manual horizontal thrust, layered on top of wind drift.
   const KEY_DOWN = { ArrowUp: "up", w: "up", W: "up", ArrowDown: "down", s: "down", S: "down",
     ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right" };
+  // don't hijack keys while the player is typing in a text field (username/zip),
+  // otherwise WASD never reaches the input (preventDefault swallows it).
+  const typingInField = () => {
+    const el = document.activeElement;
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+  };
   addEventListener("keydown", e => {
+    if (typingInField()) return;
     if (e.code === "Space") { e.preventDefault(); press(); return; }
     const k = KEY_DOWN[e.key];
     if (!k) return;
@@ -924,10 +951,25 @@ async function cloudSave(list) {
     body: JSON.stringify({ scores: list }) });
   if (!r.ok) throw new Error("save " + r.status);
 }
-// pull the shared board into the local mirror so the recap reflects it
+// reconcile the local mirror and the shared board in BOTH directions: pull the
+// cloud down into local (so the recap reflects other screens), and push local-only
+// rows back UP. Without the push-up, a run recorded while the cloud was briefly
+// unreachable (recordRun's cloud write has a .catch that keeps it local) stays
+// local-only forever — it shows on the end-of-game board but never reaches the
+// standalone leaderboard screen, which reads cloud-only. The end-of-game board is
+// the reference superset, so its rows win.
 function cloudSync() {
   if (!cloudOn()) return Promise.resolve();
-  return cloudLoad().then(list => saveLB(dedupeBest([...loadLB(), ...list]))).catch(() => {});
+  return cloudLoad().then(remote => {
+    const merged = dedupeBest([...loadLB(), ...remote]);
+    saveLB(merged);
+    const remoteBest = dedupeBest(remote);
+    const localHasMore = merged.length !== remoteBest.length || merged.some(m => {
+      const r = remoteBest.find(x => x.username === m.username);
+      return !r || rowBuffer(m) > rowBuffer(r);
+    });
+    if (localHasMore) return cloudSave(merged); // upload the union so both screens match
+  }).catch(() => {});
 }
 const rowScore = r => (r.score != null ? r.score : Math.floor(r.hoursSurvived || 0)); // legacy fallback
 const rowBuffer = r => (r.bufferSeconds || 0);
@@ -1006,7 +1048,6 @@ try {
   bindBuffer("bbl", "baseLength", v => v + "s");
   bindBuffer("bge", "growthPerEvent", v => "+" + v + "s");
 
-  addEventListener("keydown", e => { if (e.key.toLowerCase() === "t") $("panel").classList.toggle("hidden"); });
   addEventListener("contextmenu", e => e.preventDefault());
 
   const usernameEl = $("username"), zipEl = $("zip"), playBtn = $("playBtn"), srcNote = $("srcNote");
@@ -1149,7 +1190,12 @@ try {
     if (!$("retry").classList.contains("hidden")) { e.preventDefault(); $("retryBtn").click(); }
     else if (!$("start").classList.contains("hidden") && !playBtn.disabled) { e.preventDefault(); launch(); }
   });
-  $("exitRestartBtn").addEventListener("click", () => { $("exitScreen").classList.add("hidden"); $("start").classList.remove("hidden"); });
+  $("exitRestartBtn").addEventListener("click", () => {
+    $("exitScreen").classList.add("hidden"); $("start").classList.remove("hidden");
+    // fresh start: clear the username/zip so the next player enters their own
+    usernameEl.value = ""; zipEl.value = ""; seriesReady = null;
+    srcNote.textContent = ""; updatePlayBtn(); usernameEl.focus();
+  });
   // X out → everything breaks apart and falls, then the flight-log recap shows.
   let exiting = false;
   function doRecap() { if (!exiting) return; exiting = false; showExitRecap(); }
@@ -1160,7 +1206,7 @@ try {
     exitBtn.classList.add("hidden"); $("panel").classList.add("hidden");
     $("retry").classList.add("hidden"); // in case we exited from the try-again screen
     Game.breakApart(doRecap);
-    setTimeout(doRecap, 4500); // safety net: show recap even if rAF stalls (backgrounded tab)
+    setTimeout(doRecap, 3200); // safety net: show recap even if rAF stalls mid-animation
   });
 
   Game.init();
