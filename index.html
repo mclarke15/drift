@@ -100,7 +100,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">
    Use the SAME JSONBin.io Bin ID + Access Key as weather.html to read the
    central board here — so this page works on a SEPARATE SCREEN from the game.
    Empty values → reads this browser's local scores only. See SETUP-CLOUD.md. */
-const CLOUD = { binId: "", key: "" };
+const CLOUD = { binId: "6a3bef82da38895dfef7e204", key: "$2a$10$x8jQc7DnXcWfmUY7z6247OO/oagaVGUFJuNUotSvPA3kuMEO8Acaq" };
 const cloudOn = () => !!(CLOUD.binId && CLOUD.key);
 async function cloudLoad() {
   const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}/latest`,
@@ -110,9 +110,10 @@ async function cloudLoad() {
   return Array.isArray(j) ? j : (Array.isArray(j.scores) ? j.scores : []);
 }
 async function cloudSave(list) {
+  // wrap in an object — JSONBin rejects a bare empty array ("[]") as blank
   const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, { method: "PUT",
     headers: { "Content-Type": "application/json", "X-Access-Key": CLOUD.key },
-    body: JSON.stringify(list) });
+    body: JSON.stringify({ scores: list }) });
   if (!r.ok) throw new Error("save " + r.status);
 }
 

@@ -910,7 +910,7 @@ function saveLB(list) { localStorage.setItem(LB_KEY, JSON.stringify(list)); }
    Fill in a free JSONBin.io Bin ID + Access Key to store scores CENTRALLY, so a
    second screen (the leaderboard page) shows them live and you can reset them
    for everyone. Empty values → local-only, exactly as before. See SETUP-CLOUD.md. */
-const CLOUD = { binId: "", key: "" };
+const CLOUD = { binId: "6a3bef82da38895dfef7e204", key: "$2a$10$x8jQc7DnXcWfmUY7z6247OO/oagaVGUFJuNUotSvPA3kuMEO8Acaq" };
 const cloudOn = () => !!(CLOUD.binId && CLOUD.key);
 async function cloudLoad() {
   const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}/latest`,
@@ -920,9 +920,10 @@ async function cloudLoad() {
   return Array.isArray(j) ? j : (Array.isArray(j.scores) ? j.scores : []);
 }
 async function cloudSave(list) {
+  // wrap in an object — JSONBin rejects a bare empty array ("[]") as blank
   const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, { method: "PUT",
     headers: { "Content-Type": "application/json", "X-Access-Key": CLOUD.key },
-    body: JSON.stringify(list) });
+    body: JSON.stringify({ scores: list }) });
   if (!r.ok) throw new Error("save " + r.status);
 }
 // pull the shared board into the local mirror so the recap reflects it
