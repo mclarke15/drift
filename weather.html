@@ -905,6 +905,32 @@ window.Game = Game;
 const LB_KEY = "balloonLeaderboard";
 function loadLB() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch { return []; } }
 function saveLB(list) { localStorage.setItem(LB_KEY, JSON.stringify(list)); }
+
+/* ── Shared online leaderboard (optional) ──────────────────────────────────
+   Paste a free getpantry.cloud Pantry ID into CLOUD.pantryId to store scores
+   CENTRALLY, so a second screen (the leaderboard page) shows them live and you
+   can reset them for everyone. Empty pantryId → local-only, exactly as before.
+   The Pantry ID scopes to only this data and is safe to embed. See SETUP-CLOUD.md. */
+const CLOUD = { pantryId: "", basket: "drift-leaderboard" };
+const cloudOn = () => !!CLOUD.pantryId;
+const cloudUrl = () => `https://getpantry.cloud/apiv1/pantry/${CLOUD.pantryId}/basket/${CLOUD.basket}`;
+async function cloudLoad() {
+  const r = await fetch(cloudUrl());
+  if (r.status === 400 || r.status === 404) return []; // basket not created yet
+  if (!r.ok) throw new Error("load " + r.status);
+  const j = await r.json();
+  return Array.isArray(j.scores) ? j.scores : [];
+}
+async function cloudSave(list) {
+  const r = await fetch(cloudUrl(), { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scores: list }) });
+  if (!r.ok) throw new Error("save " + r.status);
+}
+// pull the shared board into the local mirror so the recap reflects it
+function cloudSync() {
+  if (!cloudOn()) return Promise.resolve();
+  return cloudLoad().then(list => saveLB(dedupeBest([...loadLB(), ...list]))).catch(() => {});
+}
 const rowScore = r => (r.score != null ? r.score : Math.floor(r.hoursSurvived || 0)); // legacy fallback
 const rowBuffer = r => (r.bufferSeconds || 0);
 // one row per username: keep each name's best (highest-buffer) run, carrying that
@@ -921,8 +947,11 @@ function recordRun(username, score, bufferSeconds = 0) {
   // record if the run produced anything worth ranking — points OR buffer endured
   // (the leaderboard ranks on buffer, so a buffered-but-scoreless run still counts)
   if (!username || !(score > 0 || bufferSeconds > 0)) return;
-  const list = dedupeBest([...loadLB(), { username, score, bufferSeconds, ts: Date.now() }]);
-  saveLB(list);
+  const row = { username, score, bufferSeconds, ts: Date.now() };
+  saveLB(dedupeBest([...loadLB(), row]));          // immediate local mirror
+  if (cloudOn()) cloudLoad()                       // then reconcile with the shared store
+    .then(remote => { const merged = dedupeBest([...remote, row]); return cloudSave(merged).then(() => saveLB(merged)); })
+    .catch(e => console.warn("cloud leaderboard sync failed (kept local):", e.message));
 }
 function bestFor(username) {
   return loadLB().filter(r => r.username === username).reduce((m, r) => Math.max(m, rowScore(r)), 0);
@@ -1089,9 +1118,13 @@ try {
       : buffered <= 30
         ? "patience is a virtue and you certainly have it😌"
         : "what did you do in all those in-between moments";
-    const rows = topN(10).map((r, i) =>
-      `<tr><td>${i + 1}</td><td>${escapeHtml(r.username)}</td><td><b>${Math.round(rowBuffer(r))}s</b></td><td style="opacity:0.6">✦ ${rowScore(r)}</td></tr>`).join("");
-    $("lbTable").innerHTML = rows || `<tr><td style="opacity:0.5">no flights yet</td></tr>`;
+    const renderTable = () => {
+      const rows = topN(10).map((r, i) =>
+        `<tr><td>${i + 1}</td><td>${escapeHtml(r.username)}</td><td><b>${Math.round(rowBuffer(r))}s</b></td><td style="opacity:0.6">✦ ${rowScore(r)}</td></tr>`).join("");
+      $("lbTable").innerHTML = rows || `<tr><td style="opacity:0.5">no flights yet</td></tr>`;
+    };
+    renderTable();
+    cloudSync().then(renderTable); // refresh once the shared board loads
     $("retry").classList.add("hidden");
     $("hud").classList.add("hidden"); $("scoreTop").classList.add("hidden");
     exitBtn.classList.add("hidden"); $("panel").classList.add("hidden");
@@ -1133,6 +1166,7 @@ try {
   });
 
   Game.init();
+  cloudSync(); // pull the shared leaderboard into the local mirror on load
 } catch (e) { console.error("BOOTSTRAP ERROR:", e.message, e.stack); }
 })();
 

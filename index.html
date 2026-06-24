@@ -94,8 +94,30 @@ function dedupeBest(list) {
   }
   return [...best.values()];
 }
-function topN(n) { return dedupeBest(loadLB()).sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n); }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+/* ── Shared online leaderboard (optional) ──────────────────────────────────
+   Paste the SAME getpantry.cloud Pantry ID used in weather.html to read the
+   central board here — so this page works on a SEPARATE SCREEN from the game.
+   Empty pantryId → reads this browser's local scores only. See SETUP-CLOUD.md. */
+const CLOUD = { pantryId: "", basket: "drift-leaderboard" };
+const cloudOn = () => !!CLOUD.pantryId;
+const cloudUrl = () => `https://getpantry.cloud/apiv1/pantry/${CLOUD.pantryId}/basket/${CLOUD.basket}`;
+async function cloudLoad() {
+  const r = await fetch(cloudUrl());
+  if (r.status === 400 || r.status === 404) return [];
+  if (!r.ok) throw new Error("load " + r.status);
+  const j = await r.json();
+  return Array.isArray(j.scores) ? j.scores : [];
+}
+async function cloudSave(list) {
+  const r = await fetch(cloudUrl(), { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scores: list }) });
+  if (!r.ok) throw new Error("save " + r.status);
+}
+
+let cache = loadLB(); // last-known rows (cloud when configured, else this browser)
+function topN(n) { return dedupeBest(cache).sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n); }
 
 function render() {
   const rows = topN(10);
@@ -112,21 +134,27 @@ function render() {
          + `<td class="num">${Math.round(rowBuffer(r))}</td></tr>`;
   }).join("");
 }
-render();
-// keep the board live: re-render if the game (same origin) writes a new score,
-// and poll as a backstop for same-tab writes that don't fire 'storage'.
-addEventListener("storage", e => { if (e.key === LB_KEY) render(); });
-setInterval(render, 3000);
+// keep the board live: pull the shared store (or local fallback), then render.
+async function tick() {
+  if (cloudOn()) { try { cache = await cloudLoad(); } catch { /* keep last cache */ } }
+  else cache = loadLB();
+  render();
+}
+tick();
+setInterval(tick, cloudOn() ? 4000 : 3000); // poll the cloud a touch slower
+addEventListener("storage", e => { if (!cloudOn() && e.key === LB_KEY) tick(); }); // local fallback
 
-// hidden kiosk reset — Ctrl/Cmd+Shift+Backspace wipes the board (after a confirm),
-// so you can clear scores on the kiosk without opening DevTools.
+// hidden reset — Ctrl/Cmd+Shift+Backspace wipes the board for EVERYONE (after a
+// confirm). Works from this screen; no DevTools needed.
 addEventListener("keydown", e => {
   if (e.shiftKey && (e.ctrlKey || e.metaKey) && e.code === "Backspace") {
     e.preventDefault();
-    if (confirm("Reset the leaderboard? This permanently clears all saved scores on this device.")) {
-      localStorage.removeItem(LB_KEY);
-      render();
-    }
+    const where = cloudOn() ? "for everyone (all screens)" : "on this device";
+    if (!confirm(`Reset the leaderboard? This permanently clears all scores ${where}.`)) return;
+    cache = [];
+    if (cloudOn()) cloudSave([]).catch(err => alert("Cloud reset failed: " + err.message));
+    else localStorage.removeItem(LB_KEY);
+    render();
   }
 });
 
