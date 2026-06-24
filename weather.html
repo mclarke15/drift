@@ -236,7 +236,7 @@ const CONFIG = {
   // world / time
   secondsPerHour: 3,   // real seconds per weather-hour (lower = more action)
   arenaMargin:    46,  // px inset from canvas edge to the lethal wall
-  balloonR:       19,  // base balloon collision radius (px) — matches the larger sprite
+  balloonR:       22,  // base balloon collision radius (px) — matches the larger sprite
 
   // intentional buffering — the real point of the exhibit. Periodic forced
   // freezes dressed as a dying connection, not a game mechanic: plain
@@ -698,7 +698,7 @@ const Game = (() => {
 
     for (const h of hazards) Pixel.draw(ctx, Pixel.stormcloud, h.x, h.y, (h.r * 2) / Pixel.stormcloud.w);
 
-    Pixel.draw(ctx, Pixel.balloon, bal.x, bal.y, 3.4 * bal.scale);
+    Pixel.draw(ctx, Pixel.balloon, bal.x, bal.y, 4.0 * bal.scale);
 
     if (bufferActive) renderBuffer();
   }
@@ -907,12 +907,21 @@ function loadLB() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || [];
 function saveLB(list) { localStorage.setItem(LB_KEY, JSON.stringify(list)); }
 const rowScore = r => (r.score != null ? r.score : Math.floor(r.hoursSurvived || 0)); // legacy fallback
 const rowBuffer = r => (r.bufferSeconds || 0);
+// one row per username: keep each name's best (highest-buffer) run, carrying that
+// run's score along with it. Also collapses any legacy duplicates on read.
+function dedupeBest(list) {
+  const best = new Map();
+  for (const r of list) {
+    const cur = best.get(r.username);
+    if (!cur || rowBuffer(r) > rowBuffer(cur)) best.set(r.username, r);
+  }
+  return [...best.values()];
+}
 function recordRun(username, score, bufferSeconds = 0) {
   // record if the run produced anything worth ranking — points OR buffer endured
   // (the leaderboard ranks on buffer, so a buffered-but-scoreless run still counts)
   if (!username || !(score > 0 || bufferSeconds > 0)) return;
-  const list = loadLB();
-  list.push({ username, score, bufferSeconds, ts: Date.now() });
+  const list = dedupeBest([...loadLB(), { username, score, bufferSeconds, ts: Date.now() }]);
   saveLB(list);
 }
 function bestFor(username) {
@@ -920,7 +929,7 @@ function bestFor(username) {
 }
 // leaderboard ranks by seconds buffered (the exhibit's real measurement), not points
 function topN(n = 10) {
-  return loadLB().slice().sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n);
+  return dedupeBest(loadLB()).sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n);
 }
 
 /* ===========================================================================

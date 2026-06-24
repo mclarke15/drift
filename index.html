@@ -85,7 +85,16 @@ const LB_KEY = "balloonLeaderboard";
 const rowBuffer = r => (r.bufferSeconds != null ? r.bufferSeconds
                        : (r.hoursSurvived != null ? r.hoursSurvived : 0));
 function loadLB() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; } catch { return []; } }
-function topN(n) { return loadLB().slice().sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n); }
+// one row per username — keep each name's highest-buffer entry
+function dedupeBest(list) {
+  const best = new Map();
+  for (const r of list) {
+    const cur = best.get(r.username);
+    if (!cur || rowBuffer(r) > rowBuffer(cur)) best.set(r.username, r);
+  }
+  return [...best.values()];
+}
+function topN(n) { return dedupeBest(loadLB()).sort((a, b) => rowBuffer(b) - rowBuffer(a)).slice(0, n); }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 function render() {
