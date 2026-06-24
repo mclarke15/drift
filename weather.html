@@ -24,30 +24,35 @@
   button.play:hover { background: #ffd980; }
   button.play:disabled { opacity: 0.5; cursor: default; }
 
-  /* start screen — matches the DRIFT leaderboard: light-blue sky, drifting pixel
-     clouds + balloon + sparkles (drawn on #startBg), a white gold-framed panel,
-     and the red pixel title. */
-  #start { background: linear-gradient(#7fc8f0, #bfe6ff 55%, #d9f0ff); backdrop-filter: none;
+  /* setup / try-again / end screens — all share the DRIFT sky aesthetic: a shared
+     animated sky (#skyBg: gradient + drifting clouds + balloon + sparkles) behind
+     a white gold-framed pixel panel with a red title and yellow buttons. */
+  #skyBg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 10;
+    image-rendering: pixelated; pointer-events: none; display: none; }
+  #start, #retry, #exitScreen { background: transparent; backdrop-filter: none;
     font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
     color: #20303f; }
-  #startBg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
-    image-rendering: pixelated; pointer-events: none; }
-  .startpanel { position: relative; z-index: 2; width: min(520px, 94vw);
-    background: rgba(255,255,255,0.82); border: 4px solid #fff; outline: 4px solid #ffd24a;
+  .skypanel { position: relative; z-index: 2; width: min(520px, 94vw); text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    background: rgba(255,255,255,0.86); border: 4px solid #fff; outline: 4px solid #ffd24a;
     border-radius: 4px; box-shadow: 0 10px 0 rgba(40,90,140,0.18), 0 0 0 8px rgba(255,255,255,0.35);
     padding: 26px 26px 22px; backdrop-filter: blur(1px); }
-  #start h1 { font-size: clamp(30px, 7vw, 46px); font-weight: 800; letter-spacing: 3px;
+  #start h1, #retry h1, #exitScreen .endthanks { font-weight: 800; letter-spacing: 2px; margin: 0;
     color: #e8533f; text-shadow: 2px 2px 0 #fff6e0, 4px 4px 0 rgba(40,90,140,0.18); }
+  #start h1, #retry h1 { font-size: clamp(26px, 6vw, 42px); letter-spacing: 3px; }
+  #exitScreen .endthanks { font-size: clamp(17px, 3.4vw, 21px); line-height: 1.45; }
   #start .tagline { font-size: 12px; letter-spacing: 4px; color: #5a7591; opacity: 1; margin: -6px 0 0; }
-  #start .sub { color: #5a7591; opacity: 1; }
-  #start .sub b { color: #20303f; }
+  #start .sub, #retry .sub, #exitScreen .endtier { color: #5a7591; opacity: 1; }
+  #start .sub b, #retry .sub b, #exitScreen .endtier b { color: #20303f; }
   #start input.field { font-family: inherit; background: #fff; color: #20303f;
     border: 2px solid #ffd24a; border-radius: 4px; }
   #start input.field::placeholder { color: #9fb3c4; }
-  #start button.play { font-family: inherit; border-radius: 4px; border: 3px solid #fff;
-    letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 5px 0 rgba(40,90,140,0.25); }
-  #start button.play:not(:disabled):active { transform: translateY(2px);
-    box-shadow: 0 3px 0 rgba(40,90,140,0.25); }
+  #start button.play, #retry button.play, #exitScreen button.play {
+    font-family: inherit; border-radius: 4px; border: 3px solid #fff; letter-spacing: 1px;
+    text-transform: uppercase; box-shadow: 0 5px 0 rgba(40,90,140,0.25); margin-top: 4px; }
+  #start button.play:not(:disabled):active,
+  #retry button.play:active, #exitScreen button.play:active {
+    transform: translateY(2px); box-shadow: 0 3px 0 rgba(40,90,140,0.25); }
   #start .sub#srcNote { color: rgba(90,117,145,0.7); }
 
   #hud { position: fixed; left: 14px; top: 12px; z-index: 15; font-size: 13px;
@@ -89,29 +94,23 @@
   #panel input[type=range] { width: 100%; }
   #panel .hint { opacity: 0.4; font-size: 10px; margin-top: 2px; }
 
-  table.lb { border-collapse: collapse; font-size: 13px; margin-top: 4px; }
-  table.lb td { padding: 3px 10px; }
-  table.lb tr:nth-child(odd) { background: rgba(255,255,255,0.04); }
-  .recap-stat { font-size: 14px; opacity: 0.85; }
-  .recap-stat b { color: #ffd980; }
-
-  /* end screen — blocky, monospaced, pixel-framed to match the game's art */
-  #exitScreen .endbox { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
-    background: #101b2c; color: #eaf2ff; padding: 26px 30px 24px; max-width: 470px;
-    display: flex; flex-direction: column; align-items: center; gap: 11px; text-align: center;
-    image-rendering: pixelated; box-shadow: 0 0 0 3px #0c1420, 0 0 0 6px #ffcf5c, 0 0 0 9px #0c1420; }
-  #exitScreen .endthanks { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5;
-    letter-spacing: 0.5px; color: #ffd980; }
-  #exitScreen .endtier { margin: 0 0 2px; font-size: 13px; line-height: 1.55; opacity: 0.9; max-width: 380px; }
+  /* recap leaderboard table inside the end screen — light theme on the sky panel */
+  table.lb { border-collapse: collapse; font-size: 13px; margin: 2px 0 4px; width: 100%;
+    max-width: 320px; font-variant-numeric: tabular-nums; }
+  table.lb td { padding: 4px 10px; color: #20303f; }
+  table.lb td:first-child { color: #5a7591; font-weight: 800; text-align: center; }
+  table.lb td:nth-child(3) b { color: #e8533f; }
+  table.lb tr:nth-child(odd) { background: rgba(40,90,140,0.06); }
+  .recap-stat { font-size: 14px; color: #5a7591; margin: 0; }
+  .recap-stat b { color: #e8533f; }
+  #exitScreen .endtier { font-size: 13px; line-height: 1.55; max-width: 380px; margin: 0 0 2px; }
   #exitScreen .endlb { font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
-    opacity: 0.55; margin: 8px 0 0; }
-  #exitScreen .pixelbtn { border-radius: 0; box-shadow: 4px 4px 0 #20160a; font-family: inherit;
-    text-transform: lowercase; margin-top: 10px; }
-  #exitScreen .pixelbtn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #20160a; }
+    color: #5a7591; margin: 8px 0 0; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="skyBg"></canvas>
 
 <div id="hud" class="hidden"></div>
 <div id="scoreTop" class="hidden"></div>
@@ -156,8 +155,7 @@
 </div>
 
 <div id="start" class="overlay">
-  <canvas id="startBg"></canvas>
-  <div class="startpanel" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+  <div class="skypanel">
     <h1>DRIFT</h1>
     <p class="sub tagline">★ FLOAT THE WEATHER ★</p>
     <p class="sub">Float a hot-air balloon through your city's real weather.
@@ -172,21 +170,21 @@
 </div>
 
 <div id="retry" class="overlay hidden">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
-    <h1 style="font-size:26px" id="retryTitle">you crashed</h1>
+  <div class="skypanel">
+    <h1 id="retryTitle">you crashed</h1>
     <p class="sub" id="retryMsg"></p>
     <button class="play" id="retryBtn">try again</button>
   </div>
 </div>
 
 <div id="exitScreen" class="overlay hidden">
-  <div class="endbox">
+  <div class="skypanel">
     <p class="endthanks">Thank you for tolerating a broken game. Patience is a virtue. </p>
     <p class="recap-stat" id="recapBuffer"></p>
     <p class="endtier" id="recapTier"></p>
     <h2 class="endlb">leaderboard</h2>
     <table class="lb" id="lbTable"></table>
-    <button class="play pixelbtn" id="exitRestartBtn">play again</button>
+    <button class="play" id="exitRestartBtn">play again</button>
   </div>
 </div>
 
@@ -1170,12 +1168,12 @@ try {
 } catch (e) { console.error("BOOTSTRAP ERROR:", e.message, e.stack); }
 })();
 
-/* Start-screen backdrop — the same drifting clouds / bobbing balloon / twinkling
-   sparkles as the DRIFT leaderboard, reusing the game's own Pixel sprites so it
-   matches pixel-for-pixel. Idles (skips drawing) whenever the start overlay is
-   hidden, i.e. during play and on the end screens. */
-(function startBackdrop() {
-  const sc = document.getElementById("startBg");
+/* Shared sky backdrop — a light-blue gradient with drifting clouds, twinkling
+   sparkles and a bobbing balloon (reusing the game's own Pixel sprites), shown
+   behind ALL three menu screens (setup / try-again / end) so they match the
+   DRIFT leaderboard pixel-for-pixel. Hidden (and idle) during play. */
+(function skyBackdrop() {
+  const sc = document.getElementById("skyBg");
   if (!sc || typeof Pixel === "undefined") return;
   const sg = sc.getContext("2d");
   let sw, sh, clouds, sparks;
@@ -1189,12 +1187,19 @@ try {
       s: 1.5 + Math.random() * 2, ph: Math.random() * Math.PI * 2, sp: 1 + Math.random() * 2 }));
   }
   addEventListener("resize", ssize); ssize();
+  const overlayUp = () => ["start", "retry", "exitScreen"].some(id => {
+    const el = document.getElementById(id); return el && !el.classList.contains("hidden");
+  });
   let st = 0, slast = performance.now();
   (function sframe(now) {
     const dt = Math.min(0.05, (now - slast) / 1000); slast = now; st += dt;
     requestAnimationFrame(sframe);
-    if (document.getElementById("start").classList.contains("hidden")) return;
-    sg.clearRect(0, 0, sw, sh);
+    const show = overlayUp();
+    sc.style.display = show ? "block" : "none";
+    if (!show) return;
+    const grad = sg.createLinearGradient(0, 0, 0, sh);
+    grad.addColorStop(0, "#7fc8f0"); grad.addColorStop(0.55, "#bfe6ff"); grad.addColorStop(1, "#d9f0ff");
+    sg.fillStyle = grad; sg.fillRect(0, 0, sw, sh);
     for (const c of clouds) {
       c.x += c.v * dt; if (c.x - c.s * Pixel.cloud.w > sw) c.x = -c.s * Pixel.cloud.w;
       Pixel.draw(sg, Pixel.cloud, c.x, c.y, c.s);
