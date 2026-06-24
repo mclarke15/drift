@@ -907,23 +907,22 @@ function loadLB() { try { return JSON.parse(localStorage.getItem(LB_KEY)) || [];
 function saveLB(list) { localStorage.setItem(LB_KEY, JSON.stringify(list)); }
 
 /* ── Shared online leaderboard (optional) ──────────────────────────────────
-   Paste a free getpantry.cloud Pantry ID into CLOUD.pantryId to store scores
-   CENTRALLY, so a second screen (the leaderboard page) shows them live and you
-   can reset them for everyone. Empty pantryId → local-only, exactly as before.
-   The Pantry ID scopes to only this data and is safe to embed. See SETUP-CLOUD.md. */
-const CLOUD = { pantryId: "", basket: "drift-leaderboard" };
-const cloudOn = () => !!CLOUD.pantryId;
-const cloudUrl = () => `https://getpantry.cloud/apiv1/pantry/${CLOUD.pantryId}/basket/${CLOUD.basket}`;
+   Fill in a free JSONBin.io Bin ID + Access Key to store scores CENTRALLY, so a
+   second screen (the leaderboard page) shows them live and you can reset them
+   for everyone. Empty values → local-only, exactly as before. See SETUP-CLOUD.md. */
+const CLOUD = { binId: "", key: "" };
+const cloudOn = () => !!(CLOUD.binId && CLOUD.key);
 async function cloudLoad() {
-  const r = await fetch(cloudUrl());
-  if (r.status === 400 || r.status === 404) return []; // basket not created yet
+  const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}/latest`,
+    { headers: { "X-Access-Key": CLOUD.key, "X-Bin-Meta": "false" } });
   if (!r.ok) throw new Error("load " + r.status);
   const j = await r.json();
-  return Array.isArray(j.scores) ? j.scores : [];
+  return Array.isArray(j) ? j : (Array.isArray(j.scores) ? j.scores : []);
 }
 async function cloudSave(list) {
-  const r = await fetch(cloudUrl(), { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scores: list }) });
+  const r = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, { method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Access-Key": CLOUD.key },
+    body: JSON.stringify(list) });
   if (!r.ok) throw new Error("save " + r.status);
 }
 // pull the shared board into the local mirror so the recap reflects it
